@@ -6,6 +6,7 @@
   
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/1.7.11/fabric.js"></script>
   <script type="text/javascript" src="bezier.js"></script> 
+  <script type="text/javascript" src="beziertext.class.js"></script> 
   <script type="text/javascript" src="curvedText.js"></script> 
 
 <style type="text/css">
@@ -18,7 +19,7 @@ canvas {  border:1px solid #000;     }
 <script>
 
 var N = 10;
-var text, curve, path, controldots, bezier, bezierdots, normals = [], disp_normals = false;
+var text, curve, path, controldots, bezier, bezierdots, normals = [];
 
 function updateBezier() {
 
@@ -30,31 +31,6 @@ function updateBezier() {
       top: curve[i].y,
     });
   });
-
-  if (disp_normals) {
-    bezierdots.forEach((dot, i) => {
-      var p = bezier.compute_m(i/N);
-      dot.set({
-        left: p.x,
-        top: p.y,
-      });
-    });
-    
-    normals.forEach((normal) => normal.remove());
-    bezierdots.forEach((dot, i) => {
-      var normal = bezier.normal_m(i/N);
-      var line = new fabric.Line([
-        dot.left, dot.top,
-        dot.left + normal.x * 30, dot.top + normal.y * 30,
-      ], {
-        stroke: "#080",
-        strokeWidth: 2
-      });
-      canvas.add(line);
-      line.hasControls = line.selectable = false;
-      normals[i] = line;
-    });
-  }
 
   text._render();
 
@@ -94,7 +70,7 @@ $(document).ready(function(){
       strokeWidth: 4,
       radius: 10,
       fill: "#fff",
-      stroke: "#555",
+      stroke: "#aaa",
       originX: "center",
       originY: "center",
     });
@@ -103,27 +79,13 @@ $(document).ready(function(){
     return dot;
   });
 
-  if (disp_normals) {
-    bezierdots = [];
-    for (var i = 0; i <= N; i++) {
-      var p = bezier.compute_m(i/N);
-      var dot = new fabric.Circle({
-        left: p.x,
-        top: p.y,
-        strokeWidth: 0,
-        radius: 5,
-        fill: "#c00",
-        originX: "center",
-        originY: "center",
-      });
-      dot.hasControls = dot.selectable = false;
-      canvas.add(dot);
-      bezierdots.push(dot);
-    }
-  }
+  text = new fabric.BezierText("Text on a path!", {
+    bezier: bezier,
+    fontSize: 30,
+    fontWeight: "bold",
+  });
 
-  text = new CurvedText( canvas, { bezierCurve: bezier} );
-  text.setText("Text on a path!");
+  canvas.add(text);
  
   updateBezier();
 
