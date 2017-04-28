@@ -18,9 +18,9 @@ var CurvedText = (function() {
       this.canvas = canvas;
       this.group = new fabric.Group([], {
         selectable: this.opts.selectable,
-        hasControls: this.opts.hasControls
+        hasControls: this.opts.hasControls,
       });
-      this.canvas.add( this.group ) ;
+      this.canvas.add( this.group );
 
       this._forceGroupCoords();
       this.set( 'text', this.opts.text );
@@ -179,96 +179,113 @@ var CurvedText = (function() {
         this.opts.top = this.group.top;
         this.opts.left = this.group.left;
 
-        if ( this.opts.radiusX === null ) {
-          radiusX = this.opts.radius;
-        } else {
-          radiusX = this.opts.radiusX;
-        }
-        if ( this.opts.radiusY === null ) {
-          radiusY = this.opts.radius;
-        } else {
-          radiusY = this.opts.radiusY;
-        }
+        var N = this.group.size();
 
-        radiusX = parseInt(radiusX) - (this.opts.fontSize / 2);
-        radiusY = parseInt(radiusY) - (this.opts.fontSize / 2);
+        if ( N > 0 ) {
 
-
-        if ( this.group.size() > 0 ) {
-          // Text align
-          if ( this.opts.align == 'center' ) {
-            align = (this.opts.spacing / 2) * (this.group.size() - 1) ;
-          } else if ( this.opts.align == 'right' ) {
-            align = (this.opts.spacing) * (this.group.size() - 1) ;
-          } else {
-            align = 0;
-          }
-          
           this.group.forEachObject(function(a, i) {
             items[i] = a;
           }); 
-
           items.forEach(function (a) {
             _self.group.removeWithUpdate(a);
           }); 
-
           this.canvas.remove( this.group );
 
+          if (this.opts.bezierCurve) {
 
-          for ( var i=0; i<items.length; i++ ) {
-            rx = radiusX;
-            ry = radiusY;
-            // Find coords of each letters (radians : angle*(Math.PI / 180)
-            curAngle = (i * parseInt( this.opts.spacing )) + parseInt( this.opts.rotate ) - align;
-            angleRadians = curAngle * (Math.PI / 180);
-            left = Math.sin( angleRadians ) * rx;
-            top = -Math.cos( angleRadians ) * ry;
-
-            if ( radiusX != radiusY ) {
-              var ratioX = rx / ( rx + ry ),
-                  ratioY = ry / ( rx + ry ),
-                  pct_left = Math.abs( left / rx ),
-                  pct_top = Math.abs( -top / ry ),
-                  ajustedAngle = ( (ratioY * 90 * pct_left) + ( ratioX * 90 * (1-pct_top)));
-              if ( left < 0 ) {
-                ajustedAngle = -ajustedAngle;
-              }
-              if ( -top < 0 ) {
-                ajustedAngle = 180 - ajustedAngle;
-              } 
-              curAngle = ajustedAngle;
+            for (var i = 0; i < N; i++) {
+              var p = this.opts.bezierCurve.compute_m((i+.5)/N);
+              var nm = this.opts.bezierCurve.normal_m((i+.5)/N);
+              console.log(p.x + ",  " + p.y);
+              items[i].set({
+                left: p.x,
+                top: p.y,
+                angle: Math.atan(nm.x / -nm.y) * (180 / Math.PI),
+              });
+              this.group.addWithUpdate( items[i] ); 
             }
-          
-            if ( this.opts.reverse ) {
-              curAngle = -curAngle;
-              top = -top;
-              //console.log( 'top', top, 'angle', curAngle );
-            }
-            
-            items[i].set({
-              'top': top,
-              'left': left,
-              'angle': curAngle
-            });
 
-            if ( this.opts.selectable ) {
-              this.group.addWithUpdate( items[i] );  
+          } else {
+
+            if ( this.opts.radiusX === null ) {
+              radiusX = this.opts.radius;
             } else {
-              this.group.add( items[i] );
+              radiusX = this.opts.radiusX;
+            }
+            if ( this.opts.radiusY === null ) {
+              radiusY = this.opts.radius;
+            } else {
+              radiusY = this.opts.radiusY;
+            }
+
+            radiusX = parseInt(radiusX) - (this.opts.fontSize / 2);
+            radiusY = parseInt(radiusY) - (this.opts.fontSize / 2);
+
+            // Text align
+            if ( this.opts.align == 'center' ) {
+              align = (this.opts.spacing / 2) * (N - 1) ;
+            } else if ( this.opts.align == 'right' ) {
+              align = (this.opts.spacing) * (N - 1) ;
+            } else {
+              align = 0;
+            }
+
+            for ( var i=0; i<items.length; i++ ) {
+              rx = radiusX;
+              ry = radiusY;
+              // Find coords of each letters (radians : angle*(Math.PI / 180)
+              curAngle = (i * parseInt( this.opts.spacing )) + parseInt( this.opts.rotate ) - align;
+              angleRadians = curAngle * (Math.PI / 180);
+              left = Math.sin( angleRadians ) * rx;
+              top = -Math.cos( angleRadians ) * ry;
+
+              if ( radiusX != radiusY ) {
+                var ratioX = rx / ( rx + ry ),
+                    ratioY = ry / ( rx + ry ),
+                    pct_left = Math.abs( left / rx ),
+                    pct_top = Math.abs( -top / ry ),
+                    ajustedAngle = ( (ratioY * 90 * pct_left) + ( ratioX * 90 * (1-pct_top)));
+                if ( left < 0 ) {
+                  ajustedAngle = -ajustedAngle;
+                }
+                if ( -top < 0 ) {
+                  ajustedAngle = 180 - ajustedAngle;
+                } 
+                curAngle = ajustedAngle;
+              }
+            
+              if ( this.opts.reverse ) {
+                curAngle = -curAngle;
+                top = -top;
+                //console.log( 'top', top, 'angle', curAngle );
+              }
+              
+              items[i].set({
+                'top': top,
+                'left': left,
+                'angle': curAngle
+              });
+
+              if ( this.opts.selectable ) {
+                this.group.addWithUpdate( items[i] );  
+              } else {
+                this.group.add( items[i] );
+              }
             }
           }
-        }
-
         
-        // Update group coords
-        this.group.set({
-          top: this.opts.top,
-          left: this.opts.left
-        });
+          // Update group coords
+          this.group.set({
+            top: this.opts.top,
+            left: this.opts.left
+          });
 
-        this.group.forEachObject(function(o){ o.set( 'active', false ); });
+          this.group.forEachObject(function(o){ o.set( 'active', false ); });
+          this.canvas.add(this.group);
+        
+        }
+        
         this.canvas.renderAll();
-        this.canvas.add(this.group);
     };
 
 
@@ -292,7 +309,8 @@ var CurvedText = (function() {
       fontFamily: 'Arial',
       fill: '#000',
       selectable: true,
-      hasControls: false
+      hasControls: false,
+      bezierCurve: null,
     };
 
     return CurvedText;
