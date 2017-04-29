@@ -2,17 +2,23 @@
 // adapted from:
 // https://gist.github.com/BonsaiDen/670236
 
-function Bezier(a, b, c, d) {
-  this.set(a,b,c,d);
+function Bezier(points) {
+  this.set(points);
 }
 
 Bezier.prototype = {
 
-  set: function (a,b,c,d) {
-    this.a = a;
-    this.b = b;
-    this.c = c;
-    this.d = d;
+  set: function (points) {
+    this.points = points;
+    this.a = points[0];
+    this.b = points[1];
+    this.c = points[2];
+    this.d = points[3];
+
+    // HACK
+    this.pBezier = new pBezier(points);
+    var bbox = this.pBezier.bbox();
+    this.pBezier = new pBezier(points.map(({x,y}) => { return { x: x - bbox.x.min, y: y - bbox.y.min }; }));
 
     this.len = 100;
     this.arcLengths = new Array(this.len + 1);
@@ -86,6 +92,7 @@ Bezier.prototype = {
 
 
 
+
   compute: function (t) {
     return { x: this.x(t), y: this.y(t) };
   },
@@ -137,4 +144,48 @@ Bezier.prototype = {
   angle_px: function (px) {
     return this.angle(this.map_px(px));
   },
+
+
+
+
+  pcompute: function (t) {
+    return this.pBezier.compute(t);
+  },
+
+  pcompute_u: function (u) {
+    return this.pcompute(this.map_u(u));
+  },
+
+  pcompute_px: function (px) {
+    return this.pcompute(this.map_px(px));
+  },
+
+  // ....
+
+  pnormal: function (t) {
+    return this.pBezier.normal(t);
+  },
+
+  pnormal_u: function (u) {
+    return this.pnormal(this.map_u(u));
+  },
+
+  pnormal_px: function (px) {
+    return this.pnormal(this.map_px(px));
+  },
+
+  // in radians
+  pangle: function (t) {
+    var nm = this.pnormal(t);
+    return Math.atan(nm.x / -nm.y) + (nm.y < 0 ? Math.PI : 0);
+  },
+
+  pangle_u: function (u) {
+    return this.pangle(this.map_u(u));
+  },
+
+  pangle_px: function (px) {
+    return this.pangle(this.map_px(px));
+  },
+
 };

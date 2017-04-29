@@ -1,6 +1,6 @@
 
 
-
+=============== fabric.Text ===============
 
 _render:
   _renderTextLinesBackground ??
@@ -10,7 +10,6 @@ _render:
     _renderTextStroke
       _renderTextCommon ..
   _renderTextDecoration      ??
-
 
 
 
@@ -30,7 +29,19 @@ _renderTextCommon:
 
 
 
-
 _initDimensions:
   _getTextWidth / _getTextHeight
     _getLineWidth
+
+
+=============== fabric.IText ==================
+
+render:
+  renderCursorOrSelection
+    _getCursorBoundaries
+      _getCursorBoundariesOffsets
+        _getHeightOfLine
+        _getWidthOfChar
+        _getLineLeftOffset
+        _getLineWidth
+    renderCursor | renderSelection

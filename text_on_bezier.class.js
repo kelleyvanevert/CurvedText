@@ -12,6 +12,25 @@
     return;
   }
 
+  var Bounds = function (xmin, xmax, ymin, ymax) {
+    this.xmin = xmin;
+    this.xmax = xmax;
+    this.ymin = ymin;
+    this.ymax = ymax;
+  };
+  Bounds.prototype.include = function (p) {
+    this.xmin = Math.min(this.xmin, p.x);
+    this.ymin = Math.min(this.ymin, p.y);
+    this.xmax = Math.max(this.xmax, p.x);
+    this.ymax = Math.max(this.ymax, p.y);
+  };
+  Bounds.prototype.getWidth = function () {
+    return this.xmax - this.xmin;
+  };
+  Bounds.prototype.getHeight = function () {
+    return this.ymax - this.ymin;
+  };
+
   /**
    * TextOnBezier class
    * @class fabric.TextOnBezier
@@ -22,6 +41,8 @@
    */
   fabric.TextOnBezier = fabric.util.createClass(fabric.Text, fabric.Observable, /** @lends fabric.TextOnBezier.prototype */ {
 
+    _debug: true,
+
     /**
      * Type of an object
      * @type String
@@ -29,12 +50,12 @@
      */
     type: 'text-on-bezier',
 
-    bezier: new Bezier(
-      { x: -100 + 180, y:   80 + 180 },
-      { x:  100 + 180, y:  150 + 180 },
-      { x:  240 + 180, y: -100 + 180 },
-      { x:  300 + 180, y:    0 + 180 }
-    ),
+    bezier: new Bezier([
+      { x:  80, y: 260 },
+      { x: 180, y: 360 },
+      { x: 180, y:  80 },
+      { x: 280, y: 330 },
+    ]),
 
     /**
      * Constructor
@@ -51,53 +72,120 @@
     },
 
 
-    // TODO:
-    // _initDimensions(ctx) { calculate according to bezier }
 
+    _initDimensions: function(ctx) {
+      if (this.__skipDimension) {
+        return;
+      }
+      if (!ctx) {
+        ctx = fabric.util.createCanvasElement().getContext('2d');
+        this._setTextStyles(ctx);
+      }
+      this._textLines = this._splitTextIntoLines();
+      this._clearCache();
 
-    _renderChars: function(method, ctx, chars, left, top) {
-      console.log("TextOnBezier::_renderChars");
+      // this.width = this._getTextWidth(ctx) || this.cursorWidth || MIN_TEXT_WIDTH;
+      // this.height = this._getTextHeight(ctx);
 
-      // remove Text word from method var
-      var shortM = method.slice(0, -4), _char, width;
+      this._bbox = this.bezier.pBezier.bbox();
+      this.width = this._bbox.x.size;
+      this.height = this._bbox.y.size;
 
-      if (this[shortM].toLive) {
-        var offsetX = -this.width / 2 + this[shortM].offsetX || 0,
-            offsetY = -this.height / 2 + this[shortM].offsetY || 0;
-        ctx.save();
-        ctx.translate(offsetX, offsetY);
-        left -= offsetX;
-        top -= offsetY;
+      this._calculate(ctx);
+    },
+
+    _calculate: function (ctx) {
+
+      // Calculate positions & angles of characters
+      this._renderData = [];
+
+      var N = this.text.length,
+          additionalSpace = this._getWidthOfCharSpacing(),
+          charWidth,
+          accum_offsetLeft = 0,
+          pos    = this.bezier.pcompute_px(accum_offsetLeft),
+          normal = this.bezier.pnormal_px(accum_offsetLeft),
+          angle  = this.bezier.pangle_px(accum_offsetLeft),
+          textBounds = new Bounds(pos.x, pos.x, pos.y, pos.y),
+          fontAscent  = this.fontSize * (1 - this._fontSizeFraction) * this.lineHeight,
+          fontDescent = this.fontSize * this._fontSizeFraction * this.lineHeight;
+
+      for (var i = 0; i < N; i++) {
+        charWidth = ctx.measureText(this.text[i]).width;
+        this._renderData[i] = {
+          pos:        pos,
+          angle:      angle,
+          charWidth:  charWidth,
+          lineHeight: this._getHeightOfLine(),
+        };
+
+        textBounds.include({ x: pos.x - normal.x * fontAscent,  y: pos.y - normal.y * fontAscent  });
+        textBounds.include({ x: pos.x + normal.x * fontDescent, y: pos.y + normal.y * fontDescent });
+
+        accum_offsetLeft += Math.max(0, charWidth + additionalSpace);
+        pos   = this.bezier.pcompute_px(accum_offsetLeft);
+        angle = this.bezier.pangle_px(accum_offsetLeft);
       }
 
-      // THE DRAWING
-      var additionalSpace = this._getWidthOfCharSpacing(),
-          accum_px = 0,
-          pos   = this.bezier.compute_px(accum_px),
-          angle = this.bezier.angle_px(accum_px),
-          dx = pos.x - left,
-          dy = pos.y - top;
+      this.width = textBounds.getWidth();
+      this.height = textBounds.getHeight();
+      this.offsetX = textBounds.xmin;
+      this.offsetY = textBounds.ymin;
 
-      chars = chars.split('');
-      for (var i = 0, len = chars.length; i < len; i++) {
-        _char = chars[i];
+      console.log(textBounds);
 
-        // what to do with `left` / `top` ?
+    },
 
-        //ctx[method](_char, left + accum_px, top);
-//        console.log("draw char at " + (pos.x - dx) + ", " + (pos.y - dy));
+    _render: function (ctx) {
+
+      if (this._debug) {
         ctx.save();
-        ctx.translate(pos.x - dx, pos.y - dy);
-        ctx.rotate(angle);
-        ctx[method](_char, 0, 0);
+        ctx.translate(-this.width/2 - this.offsetX, -this.height/2 - this.offsetY);
+        
+        // draw bezier's bounding box
+        ctx.fillStyle = "rgba(0, 0, 0, .025)";
+        ctx.fillRect(0, 0, this._bbox.x.size, this._bbox.y.size);
+
+        // draw bezier
+        var ps = this.bezier.pBezier.points;
+        ctx.moveTo(ps[0].x, ps[0].y);
+        ctx.bezierCurveTo(ps[1].x, ps[1].y, ps[2].x, ps[2].y, ps[3].x, ps[3].y);
+        ctx.stroke();
+
+        // draw pre-computed character positions
+        ctx.strokeStyle = "rgba(0, 0, 0, .1)";
+        for (var i = 0; i < this.text.length; i++) {
+          ctx.save();
+          ctx.translate(this._renderData[i].pos.x, this._renderData[i].pos.y);
+          ctx.rotate(this._renderData[i].angle);
+
+          // see `fabric.Text::_renderTextLine`
+          ctx.translate(0, this.fontSize * this._fontSizeFraction * this.lineHeight);
+          
+          ctx.strokeRect(0, 0, this._renderData[i].charWidth, -this._renderData[i].lineHeight);
+          ctx.restore();
+        }
+
         ctx.restore();
-
-        accum_px += Math.max(0, ctx.measureText(_char).width + additionalSpace);
-        pos   = this.bezier.compute_px(accum_px);
-        angle = this.bezier.angle_px(accum_px);
       }
 
-      this[shortM].toLive && ctx.restore();
+      // DRAW TEXT
+
+      this._setTextStyles(ctx);
+
+      ctx.save();
+      ctx.translate(-this.width/2 - this.offsetX, -this.height/2 - this.offsetY);
+      
+      for (var i = 0; i < this.text.length; i++) {
+        ctx.save();
+        ctx.translate(this._renderData[i].pos.x, this._renderData[i].pos.y);
+        ctx.rotate(this._renderData[i].angle);
+
+        ctx.fillText(this.text[i], 0, 0);
+        ctx.restore();
+      }
+
+      ctx.restore();
     },
 
   });
