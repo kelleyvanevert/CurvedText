@@ -15,38 +15,58 @@ var CurvedText = function (canvas, options) {
 
 
 CurvedText.prototype._update = function () {
-  this.opts.bezierCurve.update();
+  var curve = this.opts.bezierCurve;
+  curve.update();
 
   this._controldots.forEach((dot, i) => {
     dot.set({
-      left: this.opts.bezierCurve.points[i].x,
-      top:  this.opts.bezierCurve.points[i].y,
+      left: curve.points[i].x,
+      top:  curve.points[i].y,
     });
   });
 
+  this._path.path[0][1] = curve.points[0].x;
+  this._path.path[0][2] = curve.points[0].y;
+  for (var i = 0; i <= 2; i++) {
+    this._path.path[1][i*2 + 1] = curve.points[i+1].x;
+    this._path.path[1][i*2 + 2] = curve.points[i+1].y;
+  }
+
   this._render();
   this._controldots.forEach((dot) => dot.bringToFront());
-  this.canvas.renderAll();
 };
 
 CurvedText.prototype._positionControlDots = function () {
-  
-  var off = this._offset_p0_to_group;
+  var curve = this.opts.bezierCurve;
+
+  var dx = -curve.points[0].x + this.group.left + this._offset_p0_to_group.x,
+      dy = -curve.points[0].y + this.group.top  + this._offset_p0_to_group.y;
+
+  console.log(dx);
 
   this._controldots.forEach((dot, i) => {
     dot.set({
-      left: this.opts.bezierCurve.points[i].x - this.opts.bezierCurve.points[0].x + this.group.left + off.x,
-      top:  this.opts.bezierCurve.points[i].y - this.opts.bezierCurve.points[0].y + this.group.top  + off.y,
+      left: curve.points[i].x + dx,
+      top:  curve.points[i].y + dy,
     });
     dot.setCoords();
   });
 
-  this.canvas.renderAll();
+  this._path.path[0][1] = curve.points[0].x + dx;
+  this._path.path[0][2] = curve.points[0].y + dy;
+  for (var i = 0; i <= 2; i++) {
+    this._path.path[1][i*2 + 1] = curve.points[i+1].x + dx;
+    this._path.path[1][i*2 + 2] = curve.points[i+1].y + dy;
+  }
+  
+  this._controldots.forEach((dot) => dot.bringToFront());
 };
 
 CurvedText.prototype._initEditor = function () {
 
-  this._controldots = this.opts.bezierCurve.points.map(({x,y}, i) => {
+  var curve = this.opts.bezierCurve;
+
+  this._controldots = curve.points.map(({x,y}, i) => {
     var dot = new fabric.Circle({
       left: x,
       top: y,
@@ -63,9 +83,20 @@ CurvedText.prototype._initEditor = function () {
     return dot;
   });
 
+  this._path = new fabric.Path("M " + curve.points[0].x + " " + curve.points[0].y
+      + "C " + curve.points.slice(1).map(({x,y}) => x + " " + y).join(" "), {
+    fill: "",
+    stroke: "black",
+    objectCaching: false,
+    selectable: false,
+  });
+  this.canvas.add(this._path);
+
+  this._update();
+
   this.canvas.on("object:moving", (e) => {
     if (e.target.isControlDot) {
-      this.opts.bezierCurve.points = this._controldots.map((dot) => { return {
+      curve.points = this._controldots.map((dot) => { return {
         x: dot.left,
         y: dot.top,
       }});
@@ -73,6 +104,7 @@ CurvedText.prototype._initEditor = function () {
     } else if (e.target.isCurvedTextContainer) {
       this._positionControlDots();
     }
+    this.canvas.renderAll();
   });
 };
 
@@ -231,6 +263,14 @@ CurvedText.prototype._render = function() {
   this._offset_p0_to_group = {
     x: this._controldots[0].left - this.group.left,
     y: this._controldots[0].top  - this.group.top,
+  };
+  this._path_pos = {
+    x: this._path.left,
+    y: this._path.top,
+  };
+  this._offset_path_to_group = {
+    x: this._path.left - this.group.left,
+    y: this._path.top  - this.group.top,
   };
 };
 
