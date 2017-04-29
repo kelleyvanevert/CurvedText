@@ -35,6 +35,8 @@ function updateBezier() {
   // (weird: with IText, it seems to not be necessary, AFTER AN EDIT)
   text._forceClearCache = true;
 
+  text.setFirstPointAt({ x: controldots[0].left, y: controldots[0].top });
+
   controldots.forEach((dot) => dot.bringToFront());
 
   canvas.renderAll();

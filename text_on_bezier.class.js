@@ -41,7 +41,7 @@
    */
   fabric.TextOnBezier = fabric.util.createClass(fabric.Text, fabric.Observable, /** @lends fabric.TextOnBezier.prototype */ {
 
-    _debug: true,
+    _debug: 1,
 
     /**
      * Type of an object
@@ -57,6 +57,13 @@
       { x: 280, y: 330 },
     ]),
 
+
+    setFirstPointAt: function (point) {
+      this.left = point.x - this.bezier.pBezier.points[0].x;
+      this.top  = point.y - this.bezier.pBezier.points[0].y;
+    },
+
+
     /**
      * Constructor
      * @param {String} text TextOnBezier string
@@ -69,6 +76,9 @@
 
       // (not sure if this is the right way)
       this.set("_dimensionAffectingProps", this._dimensionAffectingProps.concat(["bezier"]));
+
+      this.left -= this.bezier.pBezier.points[0].x;
+      this.top  -= this.bezier.pBezier.points[0].y;
     },
 
 
@@ -88,8 +98,6 @@
       // this.height = this._getTextHeight(ctx);
 
       this._bbox = this.bezier.pBezier.bbox();
-      this.width = this._bbox.x.size;
-      this.height = this._bbox.y.size;
 
       this._calculate(ctx);
     },
@@ -132,7 +140,11 @@
       this.offsetX = textBounds.xmin;
       this.offsetY = textBounds.ymin;
 
-      console.log(textBounds);
+      if (this._prevA) {
+        this.left -= this.bezier.pBezier.points[0].x - this._prevA.x;
+        this.top  -= this.bezier.pBezier.points[0].y - this._prevA.y;
+      }
+      this._prevA = { x: this.bezier.pBezier.points[0].x, y: this.bezier.pBezier.points[0].y };
 
     },
 
@@ -142,9 +154,11 @@
         ctx.save();
         ctx.translate(-this.width/2 - this.offsetX, -this.height/2 - this.offsetY);
         
-        // draw bezier's bounding box
-        ctx.fillStyle = "rgba(0, 0, 0, .025)";
-        ctx.fillRect(0, 0, this._bbox.x.size, this._bbox.y.size);
+        if (this._debug > 1) {
+          // draw bezier's bounding box
+          ctx.fillStyle = "rgba(0, 0, 0, .025)";
+          ctx.fillRect(0, 0, this._bbox.x.size, this._bbox.y.size);
+        }
 
         // draw bezier
         var ps = this.bezier.pBezier.points;
@@ -152,18 +166,20 @@
         ctx.bezierCurveTo(ps[1].x, ps[1].y, ps[2].x, ps[2].y, ps[3].x, ps[3].y);
         ctx.stroke();
 
-        // draw pre-computed character positions
-        ctx.strokeStyle = "rgba(0, 0, 0, .1)";
-        for (var i = 0; i < this.text.length; i++) {
-          ctx.save();
-          ctx.translate(this._renderData[i].pos.x, this._renderData[i].pos.y);
-          ctx.rotate(this._renderData[i].angle);
+        if (this._debug > 1) {
+          // draw pre-computed character positions
+          ctx.strokeStyle = "rgba(0, 0, 0, .1)";
+          for (var i = 0; i < this.text.length; i++) {
+            ctx.save();
+            ctx.translate(this._renderData[i].pos.x, this._renderData[i].pos.y);
+            ctx.rotate(this._renderData[i].angle);
 
-          // see `fabric.Text::_renderTextLine`
-          ctx.translate(0, this.fontSize * this._fontSizeFraction * this.lineHeight);
-          
-          ctx.strokeRect(0, 0, this._renderData[i].charWidth, -this._renderData[i].lineHeight);
-          ctx.restore();
+            // see `fabric.Text::_renderTextLine`
+            ctx.translate(0, this.fontSize * this._fontSizeFraction * this.lineHeight);
+            
+            ctx.strokeRect(0, 0, this._renderData[i].charWidth, -this._renderData[i].lineHeight);
+            ctx.restore();
+          }
         }
 
         ctx.restore();
