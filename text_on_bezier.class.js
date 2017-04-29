@@ -41,7 +41,7 @@
    */
   fabric.TextOnBezier = fabric.util.createClass(fabric.Text, fabric.Observable, /** @lends fabric.TextOnBezier.prototype */ {
 
-    _debug: 1,
+    _debug: 0,
 
     /**
      * Type of an object
@@ -54,13 +54,20 @@
       { x:  80, y: 260 },
       { x: 180, y: 360 },
       { x: 180, y:  80 },
-      { x: 280, y: 330 },
+      { x: 300, y: 250 },
     ]),
 
 
     setFirstPointAt: function (point) {
       this.left = point.x - this.bezier.pBezier.points[0].x;
       this.top  = point.y - this.bezier.pBezier.points[0].y;
+    },
+
+    getFirstPoint: function () {
+      return {
+        x: this.left + this.bezier.pBezier.points[0].x,
+        y: this.top  + this.bezier.pBezier.points[0].y,
+      };
     },
 
 
@@ -76,9 +83,20 @@
 
       // (not sure if this is the right way)
       this.set("_dimensionAffectingProps", this._dimensionAffectingProps.concat(["bezier"]));
+      this.setControlsVisibility({
+        bl: false,
+        br: false,
+        mb: false,
+        ml: false,
+        mr: false,
+        tl: false,
+        tr: false,
+        mt: false,
+        mtr: false,
+      });
 
-      this.left -= this.bezier.pBezier.points[0].x;
-      this.top  -= this.bezier.pBezier.points[0].y;
+      this.left = this.bezier.a.x - this.bezier.pBezier.points[0].x;
+      this.top  = this.bezier.a.y - this.bezier.pBezier.points[0].y;
     },
 
 
@@ -207,5 +225,104 @@
   });
 
   fabric.util.createAccessors(fabric.TextOnBezier);
+
+
+  fabric.TextOnBezier.Editor = function (text) {
+    this.text = text;
+  };
+
+  fabric.TextOnBezier.Editor.prototype._setup = function () {
+
+    this.controldots = this.text.bezier.points.map(({x,y}, i) => {
+      var dot = new fabric.Circle({
+        left: x,
+        top: y,
+        strokeWidth: 4,
+        radius: (i % 3 == 0) ? 10 : 6,
+        fill: "#fff",
+        stroke: "#000",
+        originX: "center",
+        originY: "center",
+        visible: "false",
+      });
+      dot.isControlDot = true;
+      dot.hasControls = false;
+      this.text.canvas.add(dot);
+      return dot;
+    });
+
+    this.text.canvas.on("object:moving", (e) => {
+      if (e.target.isControlDot) {
+        this.text.bezier.set(this.controldots.map((dot) => { return {
+          x: dot.left,
+          y: dot.top,
+        }}));
+        this._update();
+      } else {
+        this._positionControlDots();
+      }
+    });
+
+    this._hasBeenSetup = true;
+  };
+
+  fabric.TextOnBezier.Editor.prototype._positionControlDots = function () {
+    var p0 = this.text.getFirstPoint(),
+        diff = {
+          x: p0.x - this.controldots[0].left,
+          y: p0.y - this.controldots[0].top,
+        };
+    this.controldots.map((dot) => { dot.left += diff.x; dot.top += diff.y; dot.setCoords(); });
+  };
+
+  fabric.TextOnBezier.Editor.prototype._update = function () {
+    // hack, for now
+    // (weird: with IText, it seems to not be necessary, AFTER AN EDIT)
+    this.text._forceClearCache = true;
+    this.text.setFirstPointAt({ x: this.controldots[0].left, y: this.controldots[0].top });
+    this.controldots.forEach((dot) => dot.bringToFront());
+    this.text.canvas.renderAll();
+  };
+
+  fabric.TextOnBezier.Editor.prototype.startEditing = function () {
+    if (this.editing) {
+      return;
+    }
+
+    if (!this.text.canvas) {
+      console.log("cannot edit yet: no canvas specified");
+      return;
+    }
+
+    if (!this._hasBeenSetup) {
+      this._setup();
+    }
+
+    this.editing = true;
+    this.text._debug = 1;
+    this.text._forceClearCache = true;
+
+    this.controldots.map((dot) => { dot.visible = true; });
+    this._positionControlDots();
+    this.text.canvas.renderAll();
+  };
+
+  fabric.TextOnBezier.Editor.prototype.stopEditing = function () {
+    if (!this.editing) {
+      return;
+    }
+
+    this.editing = false;
+    this.text._debug = 0;
+    this.text._forceClearCache = true;
+
+    this.controldots.map((dot) => { dot.visible = false; });
+    this.text.canvas.renderAll();
+  };
+
+  fabric.TextOnBezier.Editor.prototype.toggleEditing = function () {
+    return this.editing ? this.stopEditing() : this.startEditing();
+  };
+
 
 })(typeof exports !== 'undefined' ? exports : this);

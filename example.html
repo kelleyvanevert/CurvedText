@@ -3,111 +3,37 @@
 <head>
  <meta charset="utf-8">
   <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
-  
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/1.7.11/fabric.js"></script>
-  <script type="text/javascript" src="bezier-pomax.js"></script> 
-  <script type="text/javascript" src="bezier.js"></script> 
-  <script type="text/javascript" src="text_on_bezier.class.js"></script> 
-  <script type="text/javascript" src="itext_on_bezier.class.js"></script> 
-  <script type="text/javascript" src="curvedText.js"></script> 
 
-<style type="text/css">
+  <script type="text/javascript" src="bezier-pomax.js"></script>
+  <script type="text/javascript" src="bezier.js"></script>
+  <script type="text/javascript" src="text_on_bezier.class.js"></script>
 
-canvas {  border:1px solid #000; }
+  <style type="text/css">
+  canvas {  border:1px solid #000; }
+  </style>
+</head>
+<body>
 
-</style>
+<canvas id="c" width="600" height="400"></canvas>
 
 <script>
 
-var N = 10;
-var text, path, controldots, bezier, bezierdots, normals = [];
-
-function updateBezier() {
-
-  controldots.forEach((dot, i) => {
-    dot.set({
-      left: bezier.points[i].x,
-      top: bezier.points[i].y,
-    });
-  });
-
-  // hack, for now
-  // (weird: with IText, it seems to not be necessary, AFTER AN EDIT)
-  text._forceClearCache = true;
-
-  text.setFirstPointAt({ x: controldots[0].left, y: controldots[0].top });
-
-  controldots.forEach((dot) => dot.bringToFront());
-
-  canvas.renderAll();
-};
+var text, textEditor;
 
 $(document).ready(function(){
 
   canvas = new fabric.Canvas('c');
 
-  bezier = new Bezier([
-    { x:  80, y: 260 },
-    { x: 180, y: 360 },
-    { x: 180, y:  80 },
-    { x: 280, y: 330 },
-  ]);
-
-  /*
-  path = new fabric.Path('M 0 0 C' + curve.slice(1).map(({x,y}) => x + " " + y).join(" "), {
-    left: sx,
-    top: sy,
-    strokeWidth:2,
-    originY: "center",
-  });
-  path.hasControls = false;
-  canvas.add(path);
-  */
-
-  controldots = bezier.points.map(({x,y}) => {
-    var dot = new fabric.Circle({
-      left: x,
-      top: y,
-      strokeWidth: 4,
-      radius: 10,
-      fill: "#fff",
-      stroke: "#000",
-      originX: "center",
-      originY: "center",
-    });
-    dot.hasControls = false;
-    canvas.add(dot);
-    return dot;
-  });
-
-  text = new fabric.TextOnBezier("Text on a path!", {
-    bezier: bezier,
+  canvas.add(text = new fabric.TextOnBezier("Text on a path!", {
     fontSize: 30,
     fontWeight: "bold",
-    left: bezier.a.x,
-    top: bezier.a.y,
-  });
+  }));
 
-  canvas.add(text);
- 
-  updateBezier();
-
-  canvas.on("object:moving", function () {
-    bezier.set(controldots.map((dot) => { return {
-      x: dot.left,
-      y: dot.top,
-    }}));
-    updateBezier();
-  });
+  textEditor = new fabric.TextOnBezier.Editor(text);
 
 });
 
 </script>
-
-</head>
-<body>
-
-  <canvas id="c" width="600" height="400"></canvas>
-
 </body>
 </html>
