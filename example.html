@@ -6,13 +6,12 @@
   
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/1.7.11/fabric.js"></script>
   <script type="text/javascript" src="bezier.js"></script> 
-  <script type="text/javascript" src="beziertext.class.js"></script> 
+  <script type="text/javascript" src="text_on_bezier.class.js"></script> 
   <script type="text/javascript" src="curvedText.js"></script> 
 
 <style type="text/css">
 
-canvas {  border:1px solid #000;     }
-.controles {  margin:50px 0;   }
+canvas {  border:1px solid #000; }
 
 </style>
 
@@ -32,7 +31,8 @@ function updateBezier() {
     });
   });
 
-  text._render();
+  // hack, for now
+  text._forceClearCache = true;
 
   controldots.forEach((dot) => dot.bringToFront());
 
@@ -70,7 +70,7 @@ $(document).ready(function(){
       strokeWidth: 4,
       radius: 10,
       fill: "#fff",
-      stroke: "#aaa",
+      stroke: "#000",
       originX: "center",
       originY: "center",
     });
@@ -79,7 +79,7 @@ $(document).ready(function(){
     return dot;
   });
 
-  text = new fabric.BezierText("Text on a path!", {
+  text = new fabric.TextOnBezier("Text on a path!", {
     bezier: bezier,
     fontSize: 30,
     fontWeight: "bold",
