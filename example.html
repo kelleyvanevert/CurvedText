@@ -9,12 +9,13 @@
   <script type="text/javascript" src="fabric.canvasex.js"></script> 
   <script type="text/javascript" src="curvedText.js"></script> 
 
-<style type="text/css">
+  <style type="text/css">
+  canvas {  border:1px solid #000; }
+  </style>
+</head>
+<body>
 
-canvas {  border:1px solid #000;     }
-.controles {  margin:50px 0;   }
-
-</style>
+<canvas id="c" width="600" height="400"></canvas>
 
 <script>
 
@@ -24,28 +25,32 @@ $(document).ready(function(){
 
   canvas = new fabric.CanvasEx('c');
 
+  manip = new PathManipulator(canvas, [
+    { x: 180, y: 130 },
+    { x: 300, y:  70 },
+    { x: 370, y: 190 },
+    { x: 480, y: 200 },
+  ]);
+
   text = new CurvedText(canvas, {
-    curve: new Bezier([
-      { x:  70, y: 240 },
-      { x: 180, y: 360 },
-      //{ x: 180, y: 100 },
-      { x: 300, y: 330 },
-    ]),
+    curve: manip.ipath,
     fontSize: 30,
     fontWeight: "bold",
   });
   text.setText("Text on a path!");
 
-  manip = new PathManipulator(canvas);
+  var f = function () {
+    text._render();
+    manip.bringToFront();
+    canvas.renderAll();
+  };
+
+  manip.onUpdate(f);
+
+  f();
 
 });
 
 </script>
-
-</head>
-<body>
-
-  <canvas id="c" width="600" height="400"></canvas>
-
 </body>
 </html>

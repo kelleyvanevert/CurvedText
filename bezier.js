@@ -74,14 +74,44 @@ Bezier.prototype.mapu = function (u) {
   }
 };
 
-Bezier.prototype.mappx =function (px) {
+Bezier.prototype.mappx = function (px) {
   return this.mapu(px / this._length);
+};
+
+
+// Inversion of calling order ("compute feature" vs "input coordinate system mapping")
+// Now, you can first give an input in your coordinate system of choice, and
+//  then obtain an API to compute the curve's features:
+// Bezier::t(t)    =>  api = { feature1(), feature2(), ... }
+// Bezier::u(u)    =>  api = { feature1(), feature2(), ... }
+// Bezier::px(px)  =>  api = { feature1(), feature2(), ... }
+
+Bezier.t_methods = ["get", "compute", "derivative", "normal", "angle"];
+
+Bezier.prototype.t = function (t) {
+  var api = {};
+  Bezier.t_methods.forEach((m) => {
+    api[m] = () => this[m](t);
+  });
+  return api;
+};
+
+Bezier.prototype.u = function (u) {
+  return this.t(this.mapu(u));
+};
+
+Bezier.prototype.px = function (px) {
+  return this.t(this.mappx(px));
 };
 
 
 
 
 
+/*
+  A sequence of interpolated curves,
+    providing a similar API as to that of `Bezier`.
+*/
 
 var InterpolatedPath = function (points) {
   this.points = points || [];
@@ -121,7 +151,7 @@ InterpolatedPath.prototype.addPoint = function (point, insertAt) {
 InterpolatedPath.prototype.deletePoint = function (point) {
   var i = this.points.indexOf(point);
   this.points.splice(i, 1);
-  
+
   if (this.curves[i]) {
     this.curves.splice(i, 1);
   }
@@ -175,6 +205,9 @@ InterpolatedPath.prototype._update = function () {
       ]);
     }
   }
+
+  // 3) some computation
+  this._length = this.curves.reduce((m, curve) => m + curve._length, 0);
 };
 
 // http://scaledinnovation.com/analytics/splines/aboutSplines.html
@@ -197,3 +230,21 @@ InterpolatedPath._getControlPoints = InterpolatedPath.prototype._getControlPoint
 };
 
 
+// Expose an inverted API in a similar fashion as `Bezier` (see above)
+
+InterpolatedPath.prototype.u = function (u) {
+  var at = 0;
+  for (var i = 0; i < this.curves.length; i++) {
+    var f = this.curves[i]._length / this._length;
+    if (u <= at + f) {
+      return this.curves[i].u((u - at) / f);
+    }
+    at += f;
+  }
+  // will not happen
+  return this.curves[this.curves.length - 1].u(1);
+};
+
+InterpolatedPath.prototype.px = function (px) {
+  return this.u(px / this._length);
+};

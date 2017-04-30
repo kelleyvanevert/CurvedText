@@ -1,11 +1,12 @@
 
 
 
-var PathManipulator = function (canvas) {
+var PathManipulator = function (canvas, points) {
   this.canvas = canvas;
 
-  this.ipath = new InterpolatedPath();
+  this._callbacks = [];
 
+  this.ipath = new InterpolatedPath();
 
   this.mouse = new fabric.Circle({
     left: -20,
@@ -70,6 +71,10 @@ var PathManipulator = function (canvas) {
       }
     }
   });
+
+  (points || []).forEach((p) => this.addPoint(p));
+
+  this._update();
 }
 
 PathManipulator.prototype._deleteKey = function () {
@@ -158,7 +163,18 @@ PathManipulator.prototype._update = function () {
   this.ipath.points.forEach((p) => p.dot.bringToFront());
 
   this.canvas.renderAll();
+
+  this._callbacks.map((f) => f());
 };
+
+PathManipulator.prototype.bringToFront = function (argument) {
+  this.ipath.points.forEach((p) => p.dot.bringToFront());
+}
+
+PathManipulator.prototype.onUpdate = function (f) {
+  this._callbacks.push(f);
+};
+
 
 
 
@@ -175,102 +191,7 @@ var CurvedText = function (canvas, options) {
 
   this.letters = [];
   this._group();
-
-  this._initEditor();
 }
-
-
-CurvedText.prototype._update = function () {
-  var curve = this.opts.curve;
-  curve.update();
-
-  this._controldots.forEach((dot, i) => {
-    dot.set({
-      left: curve.points[i].x,
-      top:  curve.points[i].y,
-    });
-  });
-
-  this._path.path[0][1] = curve.points[0].x;
-  this._path.path[0][2] = curve.points[0].y;
-  for (var i = 0; i <= curve.points.length - 2; i++) {
-    this._path.path[1][i*2 + 1] = curve.points[i+1].x;
-    this._path.path[1][i*2 + 2] = curve.points[i+1].y;
-  }
-
-  this._render();
-  this._controldots.forEach((dot) => dot.bringToFront());
-};
-
-CurvedText.prototype._positionControlDots = function () {
-  var curve = this.opts.curve;
-
-  var dx = -curve.points[0].x + this.group.left + this._offset_p0_to_group.x,
-      dy = -curve.points[0].y + this.group.top  + this._offset_p0_to_group.y;
-
-  this._controldots.forEach((dot, i) => {
-    dot.set({
-      left: curve.points[i].x + dx,
-      top:  curve.points[i].y + dy,
-    });
-    dot.setCoords();
-  });
-
-  this._path.path[0][1] = curve.points[0].x + dx;
-  this._path.path[0][2] = curve.points[0].y + dy;
-  for (var i = 0; i <= curve.points.length - 2; i++) {
-    this._path.path[1][i*2 + 1] = curve.points[i+1].x + dx;
-    this._path.path[1][i*2 + 2] = curve.points[i+1].y + dy;
-  }
-  
-  this._controldots.forEach((dot) => dot.bringToFront());
-};
-
-CurvedText.prototype._initEditor = function () {
-
-  var curve = this.opts.curve;
-
-  this._controldots = curve.points.map(({x,y}, i) => {
-    var dot = new fabric.Circle({
-      left: x,
-      top: y,
-      strokeWidth: 4,
-      radius: (i == 0 || i == curve.points.length - 1) ? 10 : 6,
-      fill: "#fff",
-      stroke: "#555",
-      originX: "center",
-      originY: "center",
-    });
-    dot.isControlDot = true;
-    dot.hasControls = false;
-    this.canvas.add(dot);
-    return dot;
-  });
-
-  this._path = new fabric.Path("M " + curve.points[0].x + " " + curve.points[0].y
-      + "C " + curve.points.slice(1).map(({x,y}) => x + " " + y).join(" "), {
-    fill: "",
-    stroke: "black",
-    objectCaching: false,
-    selectable: false,
-  });
-  this.canvas.add(this._path);
-
-  this._update();
-
-  this.canvas.on("object:moving", (e) => {
-    if (e.target.isControlDot) {
-      curve.points = this._controldots.map((dot) => { return {
-        x: dot.left,
-        y: dot.top,
-      }});
-      this._update();
-    } else if (e.target.isCurvedTextContainer) {
-      this._positionControlDots();
-    }
-    this.canvas.renderAll();
-  });
-};
 
 
 CurvedText.prototype._group = function () {
@@ -382,6 +303,8 @@ CurvedText.prototype.on = function (event, callback) {
 
 CurvedText.prototype._render = function() {
 
+  console.log("CurvedText::_render()");
+
   var curve = this.opts.curve,
       N = this.letters.length,
       textDescent = this.opts.fontSize * .25,
@@ -403,11 +326,11 @@ CurvedText.prototype._render = function() {
 
   for (var i = 0; i < N; i++) {
     var charWidth = Math.max(0, ctx.measureText(this.letters[i].text).width),
-        t         = curve.mappx(offsetLeft),
-        t2        = curve.mappx(offsetLeft + charWidth / 2),
-        pos       = curve.compute(t),
-        normal    = curve.normal(t2),
-        angle     = curve.angle(t2);
+        api       = curve.px(offsetLeft),
+        api2      = curve.px(offsetLeft + charWidth / 2),
+        pos       = api.compute(),
+        normal    = api2.normal(),
+        angle     = api2.angle();
 
     this.letters[i].set({
       left: pos.x + normal.x * textDescent,
@@ -423,19 +346,6 @@ CurvedText.prototype._render = function() {
   
   ctx.restore();
   this.canvas.renderAll();
-
-  this._offset_p0_to_group = {
-    x: this._controldots[0].left - this.group.left,
-    y: this._controldots[0].top  - this.group.top,
-  };
-  this._path_pos = {
-    x: this._path.left,
-    y: this._path.top,
-  };
-  this._offset_path_to_group = {
-    x: this._path.left - this.group.left,
-    y: this._path.top  - this.group.top,
-  };
 };
 
 
