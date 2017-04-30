@@ -6,6 +6,7 @@
   
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/1.7.11/fabric.js"></script>
   <script type="text/javascript" src="bezier.js"></script> 
+  <script type="text/javascript" src="fabric.canvasex.js"></script> 
   <script type="text/javascript" src="curvedText.js"></script> 
 
 <style type="text/css">
@@ -17,23 +18,26 @@ canvas {  border:1px solid #000;     }
 
 <script>
 
-var text;
+var text, manip;
 
 $(document).ready(function(){
 
-  canvas = new fabric.Canvas('c');
+  canvas = new fabric.CanvasEx('c');
 
   text = new CurvedText(canvas, {
-    bezierCurve: new Bezier([
+    curve: new Bezier([
       { x:  70, y: 240 },
       { x: 180, y: 360 },
-      { x: 180, y: 100 },
+      //{ x: 180, y: 100 },
       { x: 300, y: 330 },
     ]),
     fontSize: 30,
     fontWeight: "bold",
   });
   text.setText("Text on a path!");
+
+  manip = new PathManipulator(canvas);
+
 });
 
 </script>

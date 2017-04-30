@@ -1,5 +1,273 @@
 
 
+
+var PathManipulator = function (canvas) {
+  this.canvas = canvas;
+
+  this.points = [];
+  this.curves = [];
+
+  this.mouse = new fabric.Circle({
+    left: -20,
+    top:  -20,
+    strokeWidth: 0,
+    radius: 6,
+    fill: "#ddd",
+    originX: "center",
+    originY: "center",
+  });
+  this.mouse.isMouse = true;
+  this.mouse.hasControls = false;
+  this.mouse.hasBorder = false;
+  this.canvas.add(this.mouse);
+
+
+  var insertAt, proj;
+
+  this.canvas.on("mouse:move", (e) => {
+    var mouseAt = this.canvas.getPointer(e.e);
+    this.mouse.left = mouseAt.x;
+    this.mouse.top  = mouseAt.y;
+
+    var best;
+    if (this.curves.length > 0) {
+      this.curves.forEach((curve, i) => {
+        var data = curve.getUtils().closest(curve.getLUT(), mouseAt);
+        if (!best || data.mdist < best.mdist) {
+          best = data;
+          best.curve_i = i;
+        }
+      });
+    }
+    if (best && best.mdist < 70) {
+      best.t = best.mpos / 100;
+      proj = this.curves[best.curve_i].compute(best.t);
+      this.mouse.set({
+        left: proj.x,
+        top:  proj.y,
+      });
+      insertAt = best.curve_i + 1;
+    } else {
+      proj = null;
+      insertAt = undefined;
+    }
+
+    this.canvas.renderAll();
+  });
+
+  this.canvas.on("mouse:dblclick", (e) => {
+    if (proj) {
+      this.addPoint(proj, insertAt);
+    } else {
+      this.addPoint(this.canvas.getPointer(e.e));
+    }
+  });
+
+  this.canvas.on("object:moving", (e) => {
+    if (e.target.isControlDot2) {
+      e.target.point.x = e.target.left;
+      e.target.point.y = e.target.top;
+      e.target.point._changed = true;
+      this._update();
+    }
+  });
+
+  $(window).on("keydown", (e) => {
+    //window.e = e; console.log("e.which = " + e.which + ", e.key = " + e.key);
+
+    if (e.which == 46) { // delete
+      if (this._maybeDeleteControlDots()) {
+        return false;
+      }
+    }
+  });
+}
+
+PathManipulator.prototype._maybeDeleteControlDots = function () {
+  var obj, grp;
+
+  if (obj = this.canvas.getActiveObject()) {
+    if (obj.isControlDot2) {
+      this._deleteDotAt(this.points.indexOf(obj.point));
+      return true;
+    }
+  } else if (grp = this.canvas.getActiveGroup()) {
+    var deleted = 0,
+        objects = grp.getObjects().slice();
+
+    for (var i = 0; i < objects.length; i++) {
+      if (objects[i].isControlDot2) {
+        if (i == objects.length - 1 && i == deleted) {
+          this.canvas.discardActiveGroup();
+          this.canvas.renderAll();
+        } else {
+          grp.removeWithUpdate(objects[i]);
+        }
+        this._deleteDotAt(this.points.indexOf(objects[i].point));
+        deleted++;
+      }
+    }
+
+    if (deleted) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+PathManipulator.prototype._deleteDotAt = function (i) {
+  this.canvas.remove(this.points[i].dot);
+  this.points.splice(i, 1);
+
+  if (this.curves[i]) {
+    this.canvas.remove(this.curves[i]._path);
+    this.curves.splice(i, 1);
+  }
+  if (this.curves[i-1]) {
+    this.canvas.remove(this.curves[i-1]._path);
+    this.curves.splice(i-1, 1);
+  }
+
+  this._update();
+};
+
+PathManipulator.prototype.addPoint = function (point, insertAt) {
+  var p = { x: point.x, y: point.y };
+
+  insertAt = (insertAt !== undefined && typeof insertAt == "number") ? insertAt : this.points.length;
+  this.points.splice(insertAt, 0, p);
+
+  var dot = new fabric.Circle({
+    left: p.x,
+    top: p.y,
+    strokeWidth: 4,
+    radius: 8,
+    fill: "#fff",
+    stroke: "#555",
+    originX: "center",
+    originY: "center",
+  });
+  dot.point = p;
+  p.dot = dot;
+  dot.isControlDot2 = true;
+  dot.hasControls = false;
+  this.canvas.add(dot);
+
+  this._update();
+};
+
+PathManipulator.prototype._mkCurvePath = function (curve) {
+  var str = "M " + curve.points[0].x + " " + curve.points[0].y + " "
+          + "MLQC"[curve.order] + " "
+          + curve.points.slice(1).map(({x,y}) => x + " " + y).join(" "),
+      path = new fabric.Path(str, {
+        fill: "",
+        stroke: "black",
+        objectCaching: false,
+        selectable: false,
+      });
+
+  this.canvas.add(path);
+  return path;
+};
+
+PathManipulator.prototype._update = function () {
+
+  var points = this.points,
+      curves = this.curves;
+
+  // RECOMPUTE EVERYTHING
+
+  // 1) control points
+  var cps = [];
+  for (var i = 0; i < points.length - 2; i++) {
+    cps[i] = this._getControlPoints(points[i], points[i+1], points[i+2], .5);
+  }
+
+  // 2) curves
+  for (var i = 0; i < points.length - 1; i++) {
+    // old
+    if (curves[i]) {
+      this.canvas.remove(curves[i]._path);
+    }
+    // new
+    if (points.length == 2) {
+      // degenerate case: single line between only 2 points
+      curves[0] = new Bezier([
+        points[0],
+        points[1],
+      ]);
+    } else if (!cps[i]) {
+      // last curve: quadratic
+      curves[i] = new Bezier([
+        points[i],
+        cps[i-1].cp1,
+        points[i+1],
+      ]);
+    } else if (i == 0) {
+      // first curve: quadratic
+      curves[i] = new Bezier([
+        points[i],
+        cps[i].cp0,
+        points[i+1],
+      ]);
+    } else {
+      curves[i] = new Bezier([
+        points[i],
+        cps[i-1].cp1,
+        cps[i].cp0,
+        points[i+1],
+      ]);
+    }
+  }
+
+  // UPDATE CURVE PATH OBJECTS
+  for (var i = 0; i < curves.length; i++) {
+
+    if (!curves[i]._path) {
+      curves[i]._path = this._mkCurvePath(curves[i]);
+    }
+
+    // M x0 y0
+    curves[i]._path.path[0][1] = curves[i].points[0].x;
+    curves[i]._path.path[0][2] = curves[i].points[0].y;
+    // Q/C [cps] [target]
+    for (var j = 0; j < curves[i].points.length - 1; j++) {
+      curves[i]._path.path[1][j*2+1] = curves[i].points[j+1].x;
+      curves[i]._path.path[1][j*2+2] = curves[i].points[j+1].y;
+    }
+  }
+
+  points.forEach((p) => p.dot.bringToFront());
+
+  this.canvas.renderAll();
+};
+
+
+PathManipulator._getControlPoints = PathManipulator.prototype._getControlPoints = function (p0, p1, p2, t){
+  var d01 = Math.sqrt(Math.pow(p1.x-p0.x, 2) + Math.pow(p1.y-p0.y, 2));
+  var d12 = Math.sqrt(Math.pow(p2.x-p1.x, 2) + Math.pow(p2.y-p1.y, 2));
+  var fa  = t*d01 / (d01+d12);
+  var fb  = t*d12 / (d01+d12);
+
+  return {
+    cp0: {
+      x: p1.x - fa*(p2.x-p0.x),
+      y: p1.y - fa*(p2.y-p0.y),
+    },
+    cp1: {
+      x: p1.x + fb*(p2.x-p0.x),
+      y: p1.y + fb*(p2.y-p0.y),
+    },
+  };
+};
+
+
+
+
+
+
 var CurvedText = function (canvas, options) {
   this.opts = options || {};
   for (prop in CurvedText.defaults) {
@@ -15,7 +283,7 @@ var CurvedText = function (canvas, options) {
 
 
 CurvedText.prototype._update = function () {
-  var curve = this.opts.bezierCurve;
+  var curve = this.opts.curve;
   curve.update();
 
   this._controldots.forEach((dot, i) => {
@@ -27,7 +295,7 @@ CurvedText.prototype._update = function () {
 
   this._path.path[0][1] = curve.points[0].x;
   this._path.path[0][2] = curve.points[0].y;
-  for (var i = 0; i <= 2; i++) {
+  for (var i = 0; i <= curve.points.length - 2; i++) {
     this._path.path[1][i*2 + 1] = curve.points[i+1].x;
     this._path.path[1][i*2 + 2] = curve.points[i+1].y;
   }
@@ -37,12 +305,10 @@ CurvedText.prototype._update = function () {
 };
 
 CurvedText.prototype._positionControlDots = function () {
-  var curve = this.opts.bezierCurve;
+  var curve = this.opts.curve;
 
   var dx = -curve.points[0].x + this.group.left + this._offset_p0_to_group.x,
       dy = -curve.points[0].y + this.group.top  + this._offset_p0_to_group.y;
-
-  console.log(dx);
 
   this._controldots.forEach((dot, i) => {
     dot.set({
@@ -54,7 +320,7 @@ CurvedText.prototype._positionControlDots = function () {
 
   this._path.path[0][1] = curve.points[0].x + dx;
   this._path.path[0][2] = curve.points[0].y + dy;
-  for (var i = 0; i <= 2; i++) {
+  for (var i = 0; i <= curve.points.length - 2; i++) {
     this._path.path[1][i*2 + 1] = curve.points[i+1].x + dx;
     this._path.path[1][i*2 + 2] = curve.points[i+1].y + dy;
   }
@@ -64,14 +330,14 @@ CurvedText.prototype._positionControlDots = function () {
 
 CurvedText.prototype._initEditor = function () {
 
-  var curve = this.opts.bezierCurve;
+  var curve = this.opts.curve;
 
   this._controldots = curve.points.map(({x,y}, i) => {
     var dot = new fabric.Circle({
       left: x,
       top: y,
       strokeWidth: 4,
-      radius: (i % 3 == 0) ? 10 : 6,
+      radius: (i == 0 || i == curve.points.length - 1) ? 10 : 6,
       fill: "#fff",
       stroke: "#555",
       originX: "center",
@@ -218,7 +484,7 @@ CurvedText.prototype.on = function (event, callback) {
 
 CurvedText.prototype._render = function() {
 
-  var curve = this.opts.bezierCurve,
+  var curve = this.opts.curve,
       N = this.letters.length,
       textDescent = this.opts.fontSize * .25,
       additionalSpacing = 10, // in 1000ths of 1 EM
