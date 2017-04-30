@@ -143,6 +143,13 @@ var InterpolatedPath = function (points) {
   this.curves = [];
 };
 
+InterpolatedPath.prototype.move = function (diff) {
+  var f = (p) => { p.x += diff.x; p.y += diff.y; };
+
+  this.points.forEach(f);
+  this.curves.forEach((curve) => { curve.points.forEach(f); curve.update(); });
+};
+
 InterpolatedPath.prototype.getPathD = function () {
   if (this.points.length == 0) {
     return "";

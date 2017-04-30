@@ -207,7 +207,14 @@ PathManipulator.prototype._update = function () {
     this.canvas.add(this.path);
   }
 
-  this.ipath.points.forEach((p) => p.dot.bringToFront());
+  this.ipath.points.forEach((p) => {
+    p.dot.bringToFront();
+    p.dot.set({
+      left: p.x,
+      top:  p.y,
+    });
+    p.dot.setCoords();
+  });
 
   this.canvas.renderAll();
 

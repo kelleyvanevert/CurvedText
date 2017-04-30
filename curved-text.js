@@ -25,6 +25,15 @@ var CurvedText = function (canvas, options) {
       this.stopEditing();
     }
   });
+
+  this._groupMovement = { x: 0, y: 0 };
+
+  this.canvas.on("object:moving", (e) => {
+    if (e.target && e.target.isCurvedTextContainer) {
+      this._groupMovement.x += e.e.movementX;
+      this._groupMovement.y += e.e.movementY;
+    }
+  });
 }
 
 CurvedText.prototype.stopEditing = function () {
@@ -34,6 +43,10 @@ CurvedText.prototype.stopEditing = function () {
 };
 
 CurvedText.prototype.edit = function () {
+
+  this.manip.ipath.move(this._groupMovement);
+  this._groupMovement = { x: 0, y: 0 };
+
   this._editing = true;
   this.manip.show();
   this._render();
