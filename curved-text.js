@@ -1,187 +1,5 @@
 
 
-
-var PathManipulator = function (canvas, points) {
-  this.canvas = canvas;
-
-  this._callbacks = [];
-
-  this.ipath = new InterpolatedPath();
-
-  this.mouse = new fabric.Circle({
-    left: -20,
-    top:  -20,
-    strokeWidth: 0,
-    radius: 6,
-    fill: "#ddd",
-    originX: "center",
-    originY: "center",
-  });
-  this.mouse.isMouse = true;
-  this.mouse.hasControls = false;
-  this.mouse.hasBorder = false;
-  this.canvas.add(this.mouse);
-
-
-  var insertAt, proj;
-
-  this.canvas.on("mouse:move", (e) => {
-    var mouseAt = this.canvas.getPointer(e.e);
-    this.mouse.left = mouseAt.x;
-    this.mouse.top  = mouseAt.y;
-
-    var best = this.ipath.closest(mouseAt);
-    if (best && best.mdist < 70) {
-      this.mouse.set({
-        left: best.proj.x,
-        top:  best.proj.y,
-      });
-      proj = best.proj;
-      insertAt = best.curve_i + 1;
-    } else {
-      proj = null;
-      insertAt = undefined;
-    }
-
-    this.canvas.renderAll();
-  });
-
-  this.canvas.on("mouse:dblclick", (e) => {
-    if (proj) {
-      this.addPoint(proj, insertAt);
-    } else {
-      this.addPoint(this.canvas.getPointer(e.e));
-    }
-  });
-
-  this.canvas.on("object:moving", (e) => {
-    if (e.target.isControlDot2) {
-      e.target.point.x = e.target.left;
-      e.target.point.y = e.target.top;
-      this._update();
-    }
-  });
-
-  $(window).on("keydown", (e) => {
-    //window.e = e; console.log("e.which = " + e.which + ", e.key = " + e.key);
-
-    if (e.which == 46) { // delete
-      if (this._deleteKey()) {
-        return false;
-      }
-    }
-  });
-
-  (points || []).forEach((p) => this.addPoint(p));
-
-  this._update();
-}
-
-PathManipulator.prototype._deleteKey = function () {
-  var obj, grp;
-
-  if (obj = this.canvas.getActiveObject()) {
-    if (obj.isControlDot2) {
-      this._deletePoint(obj.point);
-      return true;
-    }
-  } else if (grp = this.canvas.getActiveGroup()) {
-    var deleted = 0,
-        objects = grp.getObjects().slice();
-
-    for (var i = 0; i < objects.length; i++) {
-      if (objects[i].isControlDot2) {
-        if (i == objects.length - 1 && i == deleted) {
-          this.canvas.discardActiveGroup();
-          this.canvas.renderAll();
-        } else {
-          grp.removeWithUpdate(objects[i]);
-        }
-        this._deletePoint(objects[i].point);
-        deleted++;
-      }
-    }
-
-    if (deleted) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
-// TODO
-PathManipulator.prototype._deletePoint = function (point) {
-
-  this.ipath.deletePoint(point);
-  this.canvas.remove(point.dot);
-
-  this._update();
-};
-
-PathManipulator.prototype.addPoint = function (point, insertAt) {
-
-  this.ipath.addPoint(point, insertAt);
-
-  var dot = new fabric.Circle({
-    left: point.x,
-    top: point.y,
-    strokeWidth: 4,
-    radius: 8,
-    fill: "#fff",
-    stroke: "#555",
-    originX: "center",
-    originY: "center",
-  });
-  dot.point = point;
-  point.dot = dot;
-  dot.isControlDot2 = true;
-  dot.hasControls = false;
-  this.canvas.add(dot);
-
-  this._update();
-};
-
-PathManipulator.prototype._update = function () {
-
-  this.ipath._update();
-
-  var d = this.ipath.getPathD();
-  if (this.path) {
-    this.canvas.remove(this.path);
-  }
-  if (d) {
-    this.path = new fabric.Path(d, {
-      fill: "",
-      stroke: "black",
-      objectCaching: false,
-      selectable: false,
-    });
-    this.canvas.add(this.path);
-  }
-
-  this.ipath.points.forEach((p) => p.dot.bringToFront());
-
-  this.canvas.renderAll();
-
-  this._callbacks.map((f) => f());
-};
-
-PathManipulator.prototype.bringToFront = function (argument) {
-  this.ipath.points.forEach((p) => p.dot.bringToFront());
-}
-
-PathManipulator.prototype.onUpdate = function (f) {
-  this._callbacks.push(f);
-};
-
-
-
-
-
-
-
-
 var CurvedText = function (canvas, options) {
   this.opts = options || {};
   for (prop in CurvedText.defaults) {
@@ -189,14 +7,42 @@ var CurvedText = function (canvas, options) {
   }
   this.canvas = canvas;
 
+  this.manip = new PathManipulator(canvas, this.opts.curvePoints || [
+    { x: this.opts.left,       y: this.opts.top + this.opts.fontSize * .75 },
+    { x: this.opts.left + 200, y: this.opts.top + this.opts.fontSize * .75 },
+  ]);
+  this._editing = false;
+  this.manip.hide();
+  this.manip.onUpdate(() => this._render());
+
+  this.curve = this.manip.ipath;
+
   this.letters = [];
   this._group();
+
+  this.canvas.on("mouse:dblclick", (e) => {
+    if (this._editing) {
+      this.stopEditing();
+    }
+  });
 }
+
+CurvedText.prototype.stopEditing = function () {
+  this._editing = false;
+  this.manip.hide();
+  this._render();
+};
+
+CurvedText.prototype.edit = function () {
+  this._editing = true;
+  this.manip.show();
+  this._render();
+};
 
 
 CurvedText.prototype._group = function () {
   this.group = new fabric.Group(this.letters, {
-    selectable: true,
+    selectable: !this._editing,
     hasControls: this.opts.hasControls,
   });
   this.group.isCurvedTextContainer = true;
@@ -208,6 +54,14 @@ CurvedText.prototype._group = function () {
   }
 
   this.canvas.add(this.group);
+
+  if (this._editing) {
+    this.group.sendToBack();
+  } else {
+    this.group.on("object:dblclick", (e) => {
+      this.edit();
+    });
+  }
 };
 
 CurvedText.prototype._ungroup = function () {
@@ -282,11 +136,11 @@ CurvedText.prototype.setText = function (newText) {
 
 CurvedText.prototype._setFontStyles = function () {
   this.letters.forEach((letter) => letter.set({
-    fontSize: this.opts.fontSize,
+    fontSize:   this.opts.fontSize,
     lineHeight: 1,
     fontWeight: this.opts.fontWeight,
     fontFamily: this.opts.fontFamily,
-    fill: this.opts.fill
+    fill:       this.opts.fill
   }));
 };
 
@@ -305,7 +159,7 @@ CurvedText.prototype._render = function() {
 
   console.log("CurvedText::_render()");
 
-  var curve = this.opts.curve,
+  var curve = this.curve,
       N = this.letters.length,
       textDescent = this.opts.fontSize * .25,
       additionalSpacing = 10, // in 1000ths of 1 EM
