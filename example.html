@@ -4,11 +4,11 @@
  <meta charset="utf-8">
   <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/1.7.11/fabric.js"></script>
-
-  <script type="text/javascript" src="bezier-pomax.js"></script>
-  <script type="text/javascript" src="bezier.js"></script>
-  <script type="text/javascript" src="text_on_bezier.class.js"></script>
-
+  
+  <script type="text/javascript" src="bezier.js"></script> 
+  <script type="text/javascript" src="fabric.canvasex.js"></script> 
+  <script type="text/javascript" src="path-manipulator.js"></script> 
+  <script type="text/javascript" src="curved-text.js"></script> 
   <style type="text/css">
   canvas {  border:1px solid #000; }
   </style>
@@ -19,18 +19,34 @@
 
 <script>
 
-var text, textEditor;
+var text, manip;
 
 $(document).ready(function(){
 
-  canvas = new fabric.Canvas('c');
+  canvas = new fabric.CanvasEx('c');
 
-  canvas.add(text = new fabric.TextOnBezier("Text on a path!", {
+  text = new CurvedText(canvas, {
+    curvePoints: [
+      { x: 180, y: 130 },
+      { x: 300, y:  70 },
+      { x: 370, y: 190 },
+      { x: 480, y: 200 },
+    ],
     fontSize: 30,
     fontWeight: "bold",
-  }));
+  });
+  text.setText("Text on a path!");
 
-  textEditor = new fabric.TextOnBezier.Editor(text);
+/*
+  var f = function () {
+    text._render();
+    manip.bringToFront();
+    canvas.renderAll();
+  };
+
+  manip.onUpdate(f);
+
+  f();*/
 
 });
 
