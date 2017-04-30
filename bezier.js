@@ -77,3 +77,123 @@ Bezier.prototype.mapu = function (u) {
 Bezier.prototype.mappx =function (px) {
   return this.mapu(px / this._length);
 };
+
+
+
+
+
+
+var InterpolatedPath = function (points) {
+  this.points = points || [];
+  this.curves = [];
+};
+
+InterpolatedPath.prototype.getPathD = function () {
+  if (this.points.length == 0) {
+    return "";
+  }
+  return "M " + this.points[0].x + " " + this.points[0].y + " " + this.curves.map((curve) => "MLQC"[curve.order] + " " + curve.points.slice(1).map(({x,y}) => x + " " + y).join(" ")).join(" ");
+};
+
+InterpolatedPath.prototype.closest = function (toPoint) {
+  var best;
+  if (this.curves.length > 0) {
+    this.curves.forEach((curve, i) => {
+      var data = curve.getUtils().closest(curve.getLUT(), toPoint);
+      if (!best || data.mdist < best.mdist) {
+        best = data;
+        best.curve_i = i;
+      }
+    });
+  }
+  if (best) {
+    best.proj = this.curves[best.curve_i].compute(best.mpos / 100);
+  }
+  return best;
+};
+
+InterpolatedPath.prototype.addPoint = function (point, insertAt) {
+  insertAt = (insertAt !== undefined && typeof insertAt == "number") ? insertAt : this.points.length;
+  this.points.splice(insertAt, 0, point);
+  this._update();
+};
+
+InterpolatedPath.prototype.deletePoint = function (point) {
+  var i = this.points.indexOf(point);
+  this.points.splice(i, 1);
+  
+  if (this.curves[i]) {
+    this.curves.splice(i, 1);
+  }
+  if (this.curves[i-1]) {
+    this.curves.splice(i-1, 1);
+  }
+};
+
+InterpolatedPath.prototype._update = function () {
+
+  var points = this.points,
+      curves = this.curves;
+
+  // RECOMPUTE EVERYTHING
+
+  // 1) control points
+  var cps = [];
+  for (var i = 0; i < points.length - 2; i++) {
+    cps[i] = this._getControlPoints(points[i], points[i+1], points[i+2], .5);
+  }
+
+  // 2) curves
+  for (var i = 0; i < points.length - 1; i++) {
+    // new
+    if (points.length == 2) {
+      // degenerate case: single line between only 2 points
+      curves[0] = new Bezier([
+        points[0],
+        points[1],
+      ]);
+    } else if (!cps[i]) {
+      // last curve: quadratic
+      curves[i] = new Bezier([
+        points[i],
+        cps[i-1].cp1,
+        points[i+1],
+      ]);
+    } else if (i == 0) {
+      // first curve: quadratic
+      curves[i] = new Bezier([
+        points[i],
+        cps[i].cp0,
+        points[i+1],
+      ]);
+    } else {
+      curves[i] = new Bezier([
+        points[i],
+        cps[i-1].cp1,
+        cps[i].cp0,
+        points[i+1],
+      ]);
+    }
+  }
+};
+
+// http://scaledinnovation.com/analytics/splines/aboutSplines.html
+InterpolatedPath._getControlPoints = InterpolatedPath.prototype._getControlPoints = function (p0, p1, p2, t){
+  var d01 = Math.sqrt(Math.pow(p1.x-p0.x, 2) + Math.pow(p1.y-p0.y, 2));
+  var d12 = Math.sqrt(Math.pow(p2.x-p1.x, 2) + Math.pow(p2.y-p1.y, 2));
+  var fa  = t*d01 / (d01+d12);
+  var fb  = t*d12 / (d01+d12);
+
+  return {
+    cp0: {
+      x: p1.x - fa*(p2.x-p0.x),
+      y: p1.y - fa*(p2.y-p0.y),
+    },
+    cp1: {
+      x: p1.x + fb*(p2.x-p0.x),
+      y: p1.y + fb*(p2.y-p0.y),
+    },
+  };
+};
+
+

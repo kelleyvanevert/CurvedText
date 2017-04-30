@@ -4,8 +4,8 @@
 var PathManipulator = function (canvas) {
   this.canvas = canvas;
 
-  this.points = [];
-  this.curves = [];
+  this.ipath = new InterpolatedPath();
+
 
   this.mouse = new fabric.Circle({
     left: -20,
@@ -29,23 +29,13 @@ var PathManipulator = function (canvas) {
     this.mouse.left = mouseAt.x;
     this.mouse.top  = mouseAt.y;
 
-    var best;
-    if (this.curves.length > 0) {
-      this.curves.forEach((curve, i) => {
-        var data = curve.getUtils().closest(curve.getLUT(), mouseAt);
-        if (!best || data.mdist < best.mdist) {
-          best = data;
-          best.curve_i = i;
-        }
-      });
-    }
+    var best = this.ipath.closest(mouseAt);
     if (best && best.mdist < 70) {
-      best.t = best.mpos / 100;
-      proj = this.curves[best.curve_i].compute(best.t);
       this.mouse.set({
-        left: proj.x,
-        top:  proj.y,
+        left: best.proj.x,
+        top:  best.proj.y,
       });
+      proj = best.proj;
       insertAt = best.curve_i + 1;
     } else {
       proj = null;
@@ -67,7 +57,6 @@ var PathManipulator = function (canvas) {
     if (e.target.isControlDot2) {
       e.target.point.x = e.target.left;
       e.target.point.y = e.target.top;
-      e.target.point._changed = true;
       this._update();
     }
   });
@@ -76,19 +65,19 @@ var PathManipulator = function (canvas) {
     //window.e = e; console.log("e.which = " + e.which + ", e.key = " + e.key);
 
     if (e.which == 46) { // delete
-      if (this._maybeDeleteControlDots()) {
+      if (this._deleteKey()) {
         return false;
       }
     }
   });
 }
 
-PathManipulator.prototype._maybeDeleteControlDots = function () {
+PathManipulator.prototype._deleteKey = function () {
   var obj, grp;
 
   if (obj = this.canvas.getActiveObject()) {
     if (obj.isControlDot2) {
-      this._deleteDotAt(this.points.indexOf(obj.point));
+      this._deletePoint(obj.point);
       return true;
     }
   } else if (grp = this.canvas.getActiveGroup()) {
@@ -103,7 +92,7 @@ PathManipulator.prototype._maybeDeleteControlDots = function () {
         } else {
           grp.removeWithUpdate(objects[i]);
         }
-        this._deleteDotAt(this.points.indexOf(objects[i].point));
+        this._deletePoint(objects[i].point);
         deleted++;
       }
     }
@@ -116,31 +105,22 @@ PathManipulator.prototype._maybeDeleteControlDots = function () {
   return false;
 };
 
-PathManipulator.prototype._deleteDotAt = function (i) {
-  this.canvas.remove(this.points[i].dot);
-  this.points.splice(i, 1);
+// TODO
+PathManipulator.prototype._deletePoint = function (point) {
 
-  if (this.curves[i]) {
-    this.canvas.remove(this.curves[i]._path);
-    this.curves.splice(i, 1);
-  }
-  if (this.curves[i-1]) {
-    this.canvas.remove(this.curves[i-1]._path);
-    this.curves.splice(i-1, 1);
-  }
+  this.ipath.deletePoint(point);
+  this.canvas.remove(point.dot);
 
   this._update();
 };
 
 PathManipulator.prototype.addPoint = function (point, insertAt) {
-  var p = { x: point.x, y: point.y };
 
-  insertAt = (insertAt !== undefined && typeof insertAt == "number") ? insertAt : this.points.length;
-  this.points.splice(insertAt, 0, p);
+  this.ipath.addPoint(point, insertAt);
 
   var dot = new fabric.Circle({
-    left: p.x,
-    top: p.y,
+    left: point.x,
+    top: point.y,
     strokeWidth: 4,
     radius: 8,
     fill: "#fff",
@@ -148,8 +128,8 @@ PathManipulator.prototype.addPoint = function (point, insertAt) {
     originX: "center",
     originY: "center",
   });
-  dot.point = p;
-  p.dot = dot;
+  dot.point = point;
+  point.dot = dot;
   dot.isControlDot2 = true;
   dot.hasControls = false;
   this.canvas.add(dot);
@@ -157,111 +137,29 @@ PathManipulator.prototype.addPoint = function (point, insertAt) {
   this._update();
 };
 
-PathManipulator.prototype._mkCurvePath = function (curve) {
-  var str = "M " + curve.points[0].x + " " + curve.points[0].y + " "
-          + "MLQC"[curve.order] + " "
-          + curve.points.slice(1).map(({x,y}) => x + " " + y).join(" "),
-      path = new fabric.Path(str, {
-        fill: "",
-        stroke: "black",
-        objectCaching: false,
-        selectable: false,
-      });
-
-  this.canvas.add(path);
-  return path;
-};
-
 PathManipulator.prototype._update = function () {
 
-  var points = this.points,
-      curves = this.curves;
+  this.ipath._update();
 
-  // RECOMPUTE EVERYTHING
-
-  // 1) control points
-  var cps = [];
-  for (var i = 0; i < points.length - 2; i++) {
-    cps[i] = this._getControlPoints(points[i], points[i+1], points[i+2], .5);
+  var d = this.ipath.getPathD();
+  if (this.path) {
+    this.canvas.remove(this.path);
+  }
+  if (d) {
+    this.path = new fabric.Path(d, {
+      fill: "",
+      stroke: "black",
+      objectCaching: false,
+      selectable: false,
+    });
+    this.canvas.add(this.path);
   }
 
-  // 2) curves
-  for (var i = 0; i < points.length - 1; i++) {
-    // old
-    if (curves[i]) {
-      this.canvas.remove(curves[i]._path);
-    }
-    // new
-    if (points.length == 2) {
-      // degenerate case: single line between only 2 points
-      curves[0] = new Bezier([
-        points[0],
-        points[1],
-      ]);
-    } else if (!cps[i]) {
-      // last curve: quadratic
-      curves[i] = new Bezier([
-        points[i],
-        cps[i-1].cp1,
-        points[i+1],
-      ]);
-    } else if (i == 0) {
-      // first curve: quadratic
-      curves[i] = new Bezier([
-        points[i],
-        cps[i].cp0,
-        points[i+1],
-      ]);
-    } else {
-      curves[i] = new Bezier([
-        points[i],
-        cps[i-1].cp1,
-        cps[i].cp0,
-        points[i+1],
-      ]);
-    }
-  }
-
-  // UPDATE CURVE PATH OBJECTS
-  for (var i = 0; i < curves.length; i++) {
-
-    if (!curves[i]._path) {
-      curves[i]._path = this._mkCurvePath(curves[i]);
-    }
-
-    // M x0 y0
-    curves[i]._path.path[0][1] = curves[i].points[0].x;
-    curves[i]._path.path[0][2] = curves[i].points[0].y;
-    // Q/C [cps] [target]
-    for (var j = 0; j < curves[i].points.length - 1; j++) {
-      curves[i]._path.path[1][j*2+1] = curves[i].points[j+1].x;
-      curves[i]._path.path[1][j*2+2] = curves[i].points[j+1].y;
-    }
-  }
-
-  points.forEach((p) => p.dot.bringToFront());
+  this.ipath.points.forEach((p) => p.dot.bringToFront());
 
   this.canvas.renderAll();
 };
 
-
-PathManipulator._getControlPoints = PathManipulator.prototype._getControlPoints = function (p0, p1, p2, t){
-  var d01 = Math.sqrt(Math.pow(p1.x-p0.x, 2) + Math.pow(p1.y-p0.y, 2));
-  var d12 = Math.sqrt(Math.pow(p2.x-p1.x, 2) + Math.pow(p2.y-p1.y, 2));
-  var fa  = t*d01 / (d01+d12);
-  var fb  = t*d12 / (d01+d12);
-
-  return {
-    cp0: {
-      x: p1.x - fa*(p2.x-p0.x),
-      y: p1.y - fa*(p2.y-p0.y),
-    },
-    cp1: {
-      x: p1.x + fb*(p2.x-p0.x),
-      y: p1.y + fb*(p2.y-p0.y),
-    },
-  };
-};
 
 
 
